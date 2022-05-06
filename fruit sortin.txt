@@ -1,0 +1,75 @@
+
+
+function MouseControl(redThresh, greenThresh, blueThresh, numFrame)
+warning('off','vision:transition:usesOldCoordinates');
+
+%% Initialization
+s=serial('COM26','BAUD', 9600); % Make sure the baud rate and COM port is 
+                              % same as in Arduino IDE
+fopen(s);
+
+if nargin < 1
+    redThresh = 0.22;  % Threshold for Red color detection
+    greenThresh = 0.14;
+    numFrame = 2000 ; % Total umber of frames duration
+end
+
+
+vidDevice = imaq.VideoDevice('winvideo', 2, 'YUY2_640x480', ... % Acquire input video stream
+                    'ROI', [1 1 640 480], ...
+                    'ReturnedColorSpace', 'rgb');
+vidInfo = imaqhwinfo(vidDevice); % Acquire input video property 
+screenSize = get(0,'ScreenSize'); % Acquire system screensize
+hblob = vision.BlobAnalysis('AreaOutputPort', false, ... % Setup blob analysis handling
+                                'CentroidOutputPort', true, ... 
+                                'BoundingBoxOutputPort', true', ...
+                                'MaximumBlobArea', 300000, ...
+                                'MinimumBlobArea', 100, ...
+                                'MaximumCount', 3);
+hshapeinsBox = vision.ShapeInserter('BorderColorSource', 'Input port', ... % Setup colored box handling
+                                    'Fill', true, ...
+                                    'FillColorSource', 'Input port', ...
+                                    'Opacity', 0.4);
+hVideoIn = vision.VideoPlayer('Name', 'Final Video', ... % Setup output video stream handling
+                                'Position', [100 100 vidInfo.MaxWidth+20 vidInfo.MaxHeight+30]);
+nFrame = 0; % Initializing variables
+lCount = 0; rCount = 0; dCount = 0;
+sureEvent = 5;
+iPos = vidInfo.MaxWidth/2;
+
+%% Frame Processing Loop
+while (nFrame < numFrame)
+    rgbFrame = step(vidDevice); % Acquire single frame
+    diffFrameGreen = imsubtract(rgbFrame(:,:,2), rgb2gray(rgbFrame)); % Get green components of the image
+    binFrameGreen = im2bw(diffFrameGreen, greenThresh); % Convert the image into binary image with the green objects as white
+    [centroidGreen, bboxGreen] = step(hblob, binFrameGreen); % Get the centroids and bounding boxes of the blue
+
+
+               
+    
+    rgbFrame = flipdim(rgbFrame,2); % Flip the frame for userfriendliness
+    diffFrameRed = imsubtract(rgbFrame(:,:,1), rgb2gray(rgbFrame)); % Get red components of the image
+    binFrameRed = im2bw(diffFrameRed, redThresh); % Convert the image into binary image with the red objects as white
+    [centroidRed, bboxRed] = step(hblob, binFrameRed); % Get the centroids
+ 
+    if length(bboxRed(:,1)) == 1 
+      fprintf(s,100)
+        disp('red')
+    else 
+       fprintf(s,101)
+       disp('red not')  
+    end
+    
+    
+   
+    vidIn = step(hshapeinsBox, rgbFrame, bboxRed,single([1 0 0])); % Show the red objects in output stream
+     vidIn = step(hshapeinsBox, vidIn, bboxGreen,single([0 1 0])); % Show the green objects in output stream
+  
+    step(hVideoIn, vidIn); % Output video stream
+    nFrame = nFrame+1;
+end
+%% Clearing Memory
+release(hVideoIn); % Release all memory and buffer used
+release(vidDevice);
+clc;
+end
